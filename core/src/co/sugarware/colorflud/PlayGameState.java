@@ -19,14 +19,18 @@ public class PlayGameState extends GameState {
 
     private Vector2Pool vector2Pool;
     private int gridSize;
-    private int initialTimeLimit;
     private int timeLimit;
-    private TileColor[][] grid;
     private boolean paused;
 
+    private TileColor[][] grid;
     private int[] moves;
 
-    private ShapeRenderer shapeRenderer;
+    private boolean filling;
+    private Queue<Vector2> nodeQueue;
+    private TileColor targetColor;
+    private TileColor replacementColor;
+
+    private EnhancedShapeRenderer shapeRenderer;
     private SpriteBatch spriteBatch;
 
     private BitmapFont font;
@@ -34,11 +38,11 @@ public class PlayGameState extends GameState {
     public PlayGameState(GameStateManager gameStateManager, int gridSize, int timeLimit){
         super(gameStateManager);
         this.gridSize = gridSize;
-        this.initialTimeLimit = this.timeLimit = timeLimit;
+        this.timeLimit = timeLimit;
         paused = false;
         vector2Pool = new Vector2Pool();
 
-        shapeRenderer = new ShapeRenderer();
+        shapeRenderer = new EnhancedShapeRenderer();
         spriteBatch = new SpriteBatch();
 
         FreeTypeFontGenerator fontGenerator = new FreeTypeFontGenerator(Gdx.files.internal("font.ttf"));
@@ -47,6 +51,8 @@ public class PlayGameState extends GameState {
         font = fontGenerator.generateFont(fontParam);
         fontGenerator.dispose();
 
+        filling = false;
+        nodeQueue = new Queue<Vector2>();
 
         grid = new TileColor[gridSize][gridSize];
 
@@ -56,12 +62,7 @@ public class PlayGameState extends GameState {
             }
         }
 
-        long st = System.currentTimeMillis();
         moves = calculateMoves(grid);
-        long tt = System.currentTimeMillis() - st;
-
-
-
     }
 
 
@@ -69,6 +70,12 @@ public class PlayGameState extends GameState {
     public void update(float deltaTime){
         if(!paused){
             timeLimit -= deltaTime * 1000;
+
+            if(filling){
+                if(fillStep(grid, nodeQueue, targetColor, replacementColor) == 0){
+                    filling = false;
+                }
+            }
 
             if(isSolved(grid)){
                 gameStateManager.setGameState(GameStateManager.GameStateName.PLAY_STATE, String.valueOf(gridSize + 2), String.valueOf(100 * (int) Math.pow(gridSize, 2)));
@@ -92,21 +99,21 @@ public class PlayGameState extends GameState {
         for(int row = 0; row < gridSize; row++){
             for(int col = 0; col < gridSize; col++){
                 shapeRenderer.setColor(grid[row][col].getColor());
-                shapeRenderer.rect(tileSize * col + 1, height - (tileSize * row  - 1) - tileSize, tileSize - 2, tileSize - 2);
+                shapeRenderer.roundedRect(tileSize * col + 1, height - (tileSize * row  - 1) - tileSize, tileSize - 2, tileSize - 2, 10);
             }
         }
 
-        for(int i = 0; i < TileColor.values().length; i++){
-            TileColor col = TileColor.values()[i];
+        for(int i = 0; i < TileColor.playableValues().length; i++){
+            TileColor col = TileColor.playableValues()[i];
             shapeRenderer.setColor(col.getColor());
-            shapeRenderer.rect(i * (width / TileColor.values().length), 0, width / TileColor.values().length, width / TileColor.values().length);
+            shapeRenderer.roundedRect(i * (width / TileColor.playableValues().length), 0, width / TileColor.playableValues().length, width / TileColor.playableValues().length, 10);
         }
 
         shapeRenderer.end();
 
         spriteBatch.begin();
 
-        font.draw(spriteBatch, String.valueOf(timeLimit / 1000l), 10, font.getLineHeight() +  width / TileColor.values().length);
+        font.draw(spriteBatch, String.valueOf(timeLimit / 1000l), 10, font.getLineHeight() +  width / TileColor.playableValues().length);
 
         spriteBatch.end();
 
@@ -117,14 +124,54 @@ public class PlayGameState extends GameState {
     public void touch(int x, int y){
         int width = Gdx.graphics.getWidth();
 
-        if(y < width / TileColor.values().length){
-            int index = x / (width / TileColor.values().length);
+        if(!filling && y < width / TileColor.playableValues().length){
+            int index = x / (width / TileColor.playableValues().length);
             moves[index]--;
-            fill(0, 0, grid[0][0], TileColor.values()[index], grid);
+           // fill(0, 0, grid[0][0], TileColor.playableValues()[index], grid);
+            animatedFill(TileColor.playableValues()[index]);
         }
     }
 
+    private void animatedFill(TileColor replacementColor){
+        TileColor targetColor = grid[0][0];
+        if(targetColor == replacementColor){
+            return;
+        }
 
+        nodeQueue.addLast(vector2Pool.obtain(0, 0));
+
+        this.replacementColor = replacementColor;
+        this.targetColor = targetColor;
+        filling = true;
+    }
+
+    private int fillStep(TileColor[][] grid, Queue<Vector2> nodeQueue, TileColor targetColor, TileColor replacementColor){
+        int curSize = nodeQueue.size;
+        int n = 0;
+        for(int i = 0; i < curSize; i++){
+            Vector2 node = nodeQueue.removeFirst();
+
+            Vector2 e = vector2Pool.obtain(node);
+            Vector2 w = vector2Pool.obtain(node);
+            while(e.x < grid.length && grid[(int)e.y][(int)e.x] == targetColor){
+                e.x++;
+            }
+            while(w.x >= 0 && grid[(int)w.y][(int)w.x] == targetColor){
+                w.x--;
+            }
+            for(int x = (int) w.x + 1; x < e.x; x++){
+                grid[(int)node.y][x] = replacementColor;
+                n++;
+                if(node.y > 0 && grid[(int)node.y - 1][x] == targetColor){
+                    nodeQueue.addLast(vector2Pool.obtain(x, node.y - 1));
+                }
+                if(node.y < grid.length - 1 && grid[(int)node.y + 1][x] == targetColor){
+                    nodeQueue.addLast(vector2Pool.obtain(x, node.y + 1));
+                }
+            }
+        }
+        return n;
+    }
 
     private int fill(int row, int col, TileColor targetColor, TileColor replacementColor, TileColor[][] grid){
         if(targetColor == replacementColor || grid[row][col] != targetColor){
@@ -134,30 +181,7 @@ public class PlayGameState extends GameState {
         Queue<Vector2> nodeQueue = new Queue<Vector2>();
         nodeQueue.addLast(vector2Pool.obtain(col, row));
         while(nodeQueue.size > 0){
-            int curSize = nodeQueue.size;
-            for(int i = 0; i < curSize; i++){
-                Vector2 node = nodeQueue.removeFirst();
-                i--;
-                curSize--;
-                Vector2 e = vector2Pool.obtain(node);
-                Vector2 w = vector2Pool.obtain(node);
-                while(e.x < grid.length && grid[(int)e.y][(int)e.x] == targetColor){
-                    e.x++;
-                }
-                while(w.x >= 0 && grid[(int)w.y][(int)w.x] == targetColor){
-                    w.x--;
-                }
-                for(int x = (int) w.x + 1; x < e.x; x++){
-                    grid[(int)node.y][x] = replacementColor;
-                    n++;
-                    if(node.y > 0 && grid[(int)node.y - 1][x] == targetColor){
-                        nodeQueue.addLast(vector2Pool.obtain(x, node.y - 1));
-                    }
-                    if(node.y < grid.length - 1 && grid[(int)node.y + 1][x] == targetColor){
-                        nodeQueue.addLast(vector2Pool.obtain(x, node.y + 1));
-                    }
-                }
-            }
+            n+= fillStep(grid, nodeQueue, targetColor, replacementColor);
         }
         return n;
     }
@@ -165,16 +189,16 @@ public class PlayGameState extends GameState {
     private int[] calculateMoves(TileColor[][] grid){
         TileColor[][] tempGrid = copyGrid(grid);
 
-        int[] moves = new int[TileColor.values().length];
+        int[] moves = new int[TileColor.playableValues().length];
 
         while(!isSolved(tempGrid)){
             int bestColorIndex = -1;
             int bestCount = -1;
 
-            for(int i = 0; i < TileColor.values().length; i++){
+            for(int i = 0; i < TileColor.playableValues().length; i++){
                 TileColor[][] innerTempGrid = copyGrid(tempGrid);
                 TileColor targetColor = innerTempGrid[0][0];
-                TileColor replacementColor = TileColor.values()[i];
+                TileColor replacementColor = TileColor.playableValues()[i];
                 fill(0, 0, targetColor, replacementColor, innerTempGrid);
                 int n =   fill(0, 0, replacementColor, targetColor, innerTempGrid);
                 if(n > bestCount){
@@ -182,7 +206,7 @@ public class PlayGameState extends GameState {
                     bestColorIndex = i;
                 }
             }
-            fill(0, 0, tempGrid[0][0], TileColor.values()[bestColorIndex], tempGrid);
+            fill(0, 0, tempGrid[0][0], TileColor.playableValues()[bestColorIndex], tempGrid);
             moves[bestColorIndex]++;
         }
 
@@ -195,6 +219,7 @@ public class PlayGameState extends GameState {
         TileColor color = grid[0][0];
         for (TileColor[] row : grid) {
             for (TileColor curColor : row) {
+                if (curColor == TileColor.NONE) continue;
                 if (curColor != color) return false;
             }
         }

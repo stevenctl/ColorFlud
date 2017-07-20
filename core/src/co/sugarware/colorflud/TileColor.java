@@ -9,8 +9,17 @@ public enum TileColor {
     YELLOW,
     GREEN,
     BLUE,
-    PURPLE;
+    PURPLE,
+    NONE;
 
+    private static final TileColor[] playableValues = new TileColor[]{
+            RED,
+            ORANGE,
+            YELLOW,
+            GREEN,
+            BLUE,
+            PURPLE
+    };
 
     public Color getColor(){
         switch(this.name().toCharArray()[0]){
@@ -26,8 +35,14 @@ public enum TileColor {
                 return Color.ORANGE;
             case 'P':
                 return Color.PURPLE;
+            case 'N':
+                return Color.CLEAR;
             default:
                 throw new IllegalArgumentException(this.name() + "is not a valid TileColor");
         }
+    }
+
+    public static TileColor[] playableValues(){
+        return playableValues;
     }
 }
