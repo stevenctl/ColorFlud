@@ -2,7 +2,7 @@ package co.sugarware.colorflud;
 
 public abstract class GameState {
 
-    private GameStateManager gameStateManager;
+    protected GameStateManager gameStateManager;
 
     public GameState(GameStateManager gameStateManager){
         this.gameStateManager = gameStateManager;

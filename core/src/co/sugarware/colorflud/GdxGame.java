@@ -13,7 +13,7 @@ public class GdxGame extends ApplicationAdapter implements InputProcessor {
 	
 	@Override
 	public void create () {
-		gameStateManager = new GameStateManager("100", "60000");
+		gameStateManager = new GameStateManager("4", "60000");
 		Gdx.input.setInputProcessor(this);
 
 	}

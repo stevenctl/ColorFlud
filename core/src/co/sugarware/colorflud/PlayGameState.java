@@ -7,28 +7,36 @@ import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.freetype.FreeTypeFontGenerator;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
+import com.badlogic.gdx.math.Vector2;
+import com.badlogic.gdx.utils.Pool;
+import com.badlogic.gdx.utils.Queue;
 
 import java.util.Arrays;
 
+
 public class PlayGameState extends GameState {
 
+
+    private Vector2Pool vector2Pool;
     private int gridSize;
+    private int initialTimeLimit;
     private int timeLimit;
     private TileColor[][] grid;
     private boolean paused;
 
-    int[] moves;
+    private int[] moves;
 
     private ShapeRenderer shapeRenderer;
     private SpriteBatch spriteBatch;
 
-    BitmapFont font;
+    private BitmapFont font;
 
     public PlayGameState(GameStateManager gameStateManager, int gridSize, int timeLimit){
         super(gameStateManager);
         this.gridSize = gridSize;
-        this.timeLimit = timeLimit;
+        this.initialTimeLimit = this.timeLimit = timeLimit;
         paused = false;
+        vector2Pool = new Vector2Pool();
 
         shapeRenderer = new ShapeRenderer();
         spriteBatch = new SpriteBatch();
@@ -52,7 +60,7 @@ public class PlayGameState extends GameState {
         moves = calculateMoves(grid);
         long tt = System.currentTimeMillis() - st;
 
-        System.out.printf("Calculated moves in %s seconds", tt / 1000f);
+
 
     }
 
@@ -60,8 +68,14 @@ public class PlayGameState extends GameState {
 
     public void update(float deltaTime){
         if(!paused){
-            timeLimit -= deltaTime;
+            timeLimit -= deltaTime * 1000;
+
+            if(isSolved(grid)){
+                gameStateManager.setGameState(GameStateManager.GameStateName.PLAY_STATE, String.valueOf(gridSize + 2), String.valueOf(100 * (int) Math.pow(gridSize, 2)));
+            }
         }
+
+
     }
 
     public void draw(float deltaTime){
@@ -90,9 +104,9 @@ public class PlayGameState extends GameState {
 
         shapeRenderer.end();
 
-        spriteBatch.begin();;
+        spriteBatch.begin();
 
-        font.draw(spriteBatch, String.valueOf(timeLimit), 10, font.getLineHeight() +  width / TileColor.values().length);
+        font.draw(spriteBatch, String.valueOf(timeLimit / 1000l), 10, font.getLineHeight() +  width / TileColor.values().length);
 
         spriteBatch.end();
 
@@ -104,44 +118,49 @@ public class PlayGameState extends GameState {
         int width = Gdx.graphics.getWidth();
 
         if(y < width / TileColor.values().length){
-            fill(0, 0, grid[0][0], TileColor.values()[x / (width / TileColor.values().length)], grid);
+            int index = x / (width / TileColor.values().length);
+            moves[index]--;
+            fill(0, 0, grid[0][0], TileColor.values()[index], grid);
         }
     }
 
 
 
     private int fill(int row, int col, TileColor targetColor, TileColor replacementColor, TileColor[][] grid){
-        TileColor nodeColor = grid[row][col];
-
-        if (targetColor == replacementColor){
+        if(targetColor == replacementColor || grid[row][col] != targetColor){
             return 0;
         }
-
-        if(nodeColor != targetColor){
-            return 0;
+        int n = 0;
+        Queue<Vector2> nodeQueue = new Queue<Vector2>();
+        nodeQueue.addLast(vector2Pool.obtain(col, row));
+        while(nodeQueue.size > 0){
+            int curSize = nodeQueue.size;
+            for(int i = 0; i < curSize; i++){
+                Vector2 node = nodeQueue.removeFirst();
+                i--;
+                curSize--;
+                Vector2 e = vector2Pool.obtain(node);
+                Vector2 w = vector2Pool.obtain(node);
+                while(e.x < grid.length && grid[(int)e.y][(int)e.x] == targetColor){
+                    e.x++;
+                }
+                while(w.x >= 0 && grid[(int)w.y][(int)w.x] == targetColor){
+                    w.x--;
+                }
+                for(int x = (int) w.x + 1; x < e.x; x++){
+                    grid[(int)node.y][x] = replacementColor;
+                    n++;
+                    if(node.y > 0 && grid[(int)node.y - 1][x] == targetColor){
+                        nodeQueue.addLast(vector2Pool.obtain(x, node.y - 1));
+                    }
+                    if(node.y < grid.length - 1 && grid[(int)node.y + 1][x] == targetColor){
+                        nodeQueue.addLast(vector2Pool.obtain(x, node.y + 1));
+                    }
+                }
+            }
         }
-
-        int n = 1;
-        grid[row][col] = replacementColor;
-
-        //Navigate to other nodes
-        if(row > 0){
-            n += fill(row - 1, col, targetColor, replacementColor, grid);
-        }
-        if(row < grid.length - 1){
-            n += fill(row + 1, col, targetColor, replacementColor, grid);
-        }
-        if(col > 0){
-            n += fill(row, col - 1, targetColor, replacementColor, grid);
-        }
-        if(col < grid.length - 1){
-            n += fill(row, col + 1, targetColor, replacementColor, grid);
-        }
-
         return n;
     }
-
-    static int bbb = 0;
 
     private int[] calculateMoves(TileColor[][] grid){
         TileColor[][] tempGrid = copyGrid(grid);
@@ -154,7 +173,6 @@ public class PlayGameState extends GameState {
 
             for(int i = 0; i < TileColor.values().length; i++){
                 TileColor[][] innerTempGrid = copyGrid(tempGrid);
-                bbb += 8;
                 TileColor targetColor = innerTempGrid[0][0];
                 TileColor replacementColor = TileColor.values()[i];
                 fill(0, 0, targetColor, replacementColor, innerTempGrid);
@@ -175,11 +193,9 @@ public class PlayGameState extends GameState {
 
     private boolean isSolved(TileColor[][] grid){
         TileColor color = grid[0][0];
-        for(int r = 0; r < grid.length; r++){
-            for(int c = 0; c < grid.length; c++){
-                if(grid[r][c] != color){
-                    return false;
-                }
+        for (TileColor[] row : grid) {
+            for (TileColor curColor : row) {
+                if (curColor != color) return false;
             }
         }
         return true;
@@ -188,10 +204,8 @@ public class PlayGameState extends GameState {
 
     private TileColor[][] copyGrid(TileColor[][] grid){
         TileColor[][] tempGrid = new TileColor[gridSize][gridSize];
-        for(int r = 0; r < gridSize; r++){
-            for(int c = 0; c < gridSize; c++){
-                tempGrid[r][c] = grid[r][c];
-            }
+        for(int row = 0; row < gridSize; row++){
+            System.arraycopy(grid[row], 0, tempGrid[row], 0, gridSize);
         }
         return tempGrid;
     }
