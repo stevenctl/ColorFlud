@@ -10,10 +10,19 @@ import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 public class GdxGame extends ApplicationAdapter implements InputProcessor {
 
 	private GameStateManager gameStateManager;
-	
+	private GoogleResolver googleResolver;
+
+	public GdxGame(GoogleResolver googleResolver){
+		this.googleResolver = googleResolver;
+	}
+
+	public GoogleResolver getGoogleResolver(){
+		return googleResolver;
+	}
+
 	@Override
 	public void create () {
-		gameStateManager = new GameStateManager("20", "60000");
+		gameStateManager = new GameStateManager(this, "20", "60000");
 		Gdx.input.setInputProcessor(this);
 
 	}

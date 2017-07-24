@@ -19,10 +19,11 @@ android {
     }
     defaultConfig {
         applicationId "co.sugarware.colorflud"
-        minSdkVersion 9
-        targetSdkVersion 20
+        minSdkVersion 15
+        targetSdkVersion 26
         versionCode 1
         versionName "1.0"
+        multiDexEnabled true
     }
     buildTypes {
         release {
@@ -130,5 +131,7 @@ idea {
         }
     }
 }
+
 dependencies {
+    compile 'com.android.support:multidex:1.0.1'
 }
